@@ -67,7 +67,7 @@ team_t team = {
 
 // Global variables
 static char * heap_listp;
-static char * rover = NULL; // 마지막으로 탐색을 마친 가용 블록
+static char * rover; // 마지막으로 탐색을 마친 가용 블록
 
 // Function Prototypes
 static void *extend_heap(size_t words);
@@ -97,6 +97,8 @@ int mm_init(void)
     PUT(heap_listp + (3*WSIZE), PACK(0, 1)); // epilouge header
     heap_listp += (2*WSIZE); // 첫 bp, 프롤로그에도 일관된 NEXT_BLKP 동작
 
+    rover = heap_listp;
+
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
         return -1;
 
@@ -119,7 +121,6 @@ void *mm_malloc(size_t size) {
         asize = 2 * DSIZE;
     else
         asize = ALIGN(size + DSIZE);
-
     if ((bp = find_next_fit(asize)) != NULL) {
         place(bp, asize);
         return bp;
@@ -251,7 +252,6 @@ static void *coalesce(void *bp) {
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
         bp = PREV_BLKP(bp);
-        
     }
     // 이전, 이후 블록 모두 프리
     if (!prev_alloc && !next_alloc) {
@@ -260,8 +260,10 @@ static void *coalesce(void *bp) {
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
-
-    printf("coalesce: bp=%p rover=%p\n", bp, rover);
+            
+    if ((char *)rover >= (char *)bp && (char *)rover < NEXT_BLKP(bp)) {
+        rover = bp;
+    }
     
     return bp;
 }
@@ -270,42 +272,38 @@ static void *coalesce(void *bp) {
  * find_first_fit - Traverse the heap from the start and find the first fitting block
  */
 static void *find_first_fit(size_t asize) {
-    void *bp = NEXT_BLKP(heap_listp);
+    void *bp;
 
-    while (GET_SIZE(HDRP(bp)) > 0) { // if not epilouge
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
             return bp;
         }
-        bp = NEXT_BLKP(bp);
     }
 
     return NULL;
 }
 
 static void *find_next_fit(size_t asize) {
+    // 1. rover 다음부터 검색 시작
+    void *old_rover = rover;
     void *bp;
-
-    if (rover == NULL) {
-        bp = NEXT_BLKP(heap_listp);
-    }
-    else {
-        bp = NEXT_BLKP(rover);
-    }
-
-    while (GET_SIZE(HDRP(bp)) > 0) {
+    
+    // 2. 에필로그 도착할 때까지 순회
+    for (bp = NEXT_BLKP(rover); GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
-            rover = NEXT_BLKP(bp);
+            // 가용 공간을 찾게 되면 rover 리턴, rover 업데이트
+            rover = bp;
             return bp;
         }
-
-        bp = NEXT_BLKP(bp);
-
-        printf("rover = %p\n", rover);
-        printf("bp = %p\n", bp);
-        printf("size = %u, alloc = %d\n", GET_SIZE(HDRP(bp)), GET_ALLOC(HDRP(bp)));
-
     }
 
+    // 3. 에필로그까지 못 찾으면 다시 heap_listp부터 rover까지 검색
+    for (bp = heap_listp; bp <= old_rover; bp = NEXT_BLKP(bp)) {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+            rover = bp;
+            return bp;
+        }
+    }
     return NULL;
 }
 
@@ -322,6 +320,7 @@ static void place(char *bp, size_t asize) {
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp),  PACK(csize - asize, 0));
         PUT(FTRP(bp),  PACK(csize - asize, 0));
+
     } else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
