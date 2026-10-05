@@ -185,6 +185,10 @@ void *mm_realloc(void *bp, size_t size)
         PUT(HDRP(bp), PACK(merged_size, 0));
         PUT(FTRP(bp), PACK(merged_size, 0));
 
+        if ((char *)rover >= (char *)bp && (char *)rover < NEXT_BLKP(bp)) {
+            rover = bp;
+        }
+
         place(bp, asize);
         return bp;
     }
