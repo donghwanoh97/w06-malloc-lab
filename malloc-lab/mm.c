@@ -220,45 +220,57 @@ void mm_free(void *ptr)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    // void *oldptr = ptr;
-    // void *newptr;
-    // size_t copySize;
+    if (ptr == NULL) return mm_malloc(size);
 
-    // newptr = mm_malloc(size);
-    // if (newptr == NULL)
-    //     return NULL;
-    // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    // if (size < copySize)
-    //     copySize = size;
-    // memcpy(newptr, oldptr, copySize);
-    // mm_free(oldptr);
-    // return newptr;
+    if (size == 0) 
+    {
+        mm_free(ptr);
+        return NULL;
+    }
 
-
-    // 1. free and coalesce
-    // mmfree(ptr)
-    // char *newPtr = (char *)mm_free(ptr);
-    size_t temp = GET_SIZE(HDRP(ptr));
-    PUT(HDRP(ptr), PACK(temp, 0));
-    PUT(FTRP(ptr), PACK(temp, 0));
-
-    char *newPtr = (char *)coalesce(ptr);
-
-    size_t asize;
-    if (size == 0) return NULL;
-
+    size_t asize;    
     if (size <= DSIZE) asize = 2 * DSIZE;
     else asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
 
-    if (GET_SIZE(HDRP(newPtr)) >= asize) // if fittable
+    size_t old_size = GET_SIZE(HDRP(ptr));
+
+    // 1. 기존 공간 충분하면 그대로 사용
+    if (old_size >= asize)
     {
-        place(newPtr, asize);
+        return ptr;
     }
 
-    else
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(ptr)));
+    size_t next_size = GET_SIZE(HDRP(NEXT_BLKP(ptr)));
+
+    // 2. 기존 공간 불충분, 다음 블록이 free하고 공간이 충분하다면 병합
+    if (!next_alloc && old_size + next_size >= asize)
     {
-        newPtr = mm_malloc(asize);
+        size_t merged_size = old_size + next_size;
+
+        // PUT(HDRP(ptr), PACK(merged_size, 1));
+        // PUT(FTRP(ptr), PACK(merged_size, 1));
+        // split
+        PUT(HDRP(ptr), PACK(merged_size, 0));
+        PUT(FTRP(ptr), PACK(merged_size, 0));
+
+        place(ptr, asize);
+        return ptr;
     }
 
-    return newPtr;
+    // 3. 기존 공간, 다음 블록 공간 불충분시 malloc 호출
+    void *newptr = mm_malloc(size);
+    if (newptr == NULL)
+    {
+        return NULL;
+    }
+
+    size_t copySize = old_size - DSIZE;
+    if (size < copySize) {
+        copySize = size;
+    }
+    memcpy(newptr, ptr, copySize);
+    mm_free(ptr); // 기존 공간 
+    
+    return newptr;
 }

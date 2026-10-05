@@ -1,2 +1,5 @@
 *.o
+mdriver-viz
+viz.c
+Makefile.viz
 mdriver
