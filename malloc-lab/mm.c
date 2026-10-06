@@ -75,6 +75,7 @@ static void *coalesce(void *bp);
 static void place(char *bp, size_t asize);
 static void *find_first_fit(size_t size);
 static void *find_next_fit(size_t asize);
+static void *find_best_fit(size_t asize);
 
 int mm_init(void);
 void *mm_malloc(size_t size);
@@ -309,6 +310,26 @@ static void *find_next_fit(size_t asize) {
         }
     }
     return NULL;
+}
+
+static void *find_best_fit(size_t asize) {
+    // 1. heap_listp부터 시작
+    void *bp;
+    void *target_bp = NULL;
+    size_t min_diff = (size_t) - 1;
+
+
+    // 2. 1회 순회 하며 가장 알맞은 사이즈 가용 블록 기억
+    for (bp = NEXT_BLKP(heap_listp); GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+            size_t diff = GET_SIZE(HDRP(bp)) - asize;
+            if (diff < min_diff) {
+                min_diff = diff;
+                target_bp = bp;
+            }
+        }
+    }
+    return target_bp;
 }
 
 /*
