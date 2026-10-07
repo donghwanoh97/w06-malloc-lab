@@ -209,14 +209,24 @@ void *mm_realloc(void *bp, size_t size)
     if (!next_alloc && old_size + next_size >= asize)
     {
         size_t merged_size = old_size + next_size;
+        size_t remaining_size = merged_size - asize;
 
         void* next_bp = NEXT_BLKP(bp);
         remove_node(next_bp);
 
-        PUT(HDRP(bp), PACK(merged_size, 1));
-        PUT(FTRP(bp), PACK(merged_size, 1));
-        
         // 초기화 1: merged size를 쪼갤 수 있는 지 확인
+        if (remaining_size >= MIN_BLOCK_SIZE) {
+            PUT(HDRP(bp), PACK(asize, 1));
+            PUT(FTRP(bp), PACK(asize, 1));
+
+            next_bp = NEXT_BLKP(bp);
+            PUT(HDRP(next_bp), PACK(remaining_size, 0));
+            PUT(FTRP(next_bp), PACK(remaining_size, 0));
+            insert_node(next_bp);
+        } else {
+            PUT(HDRP(bp), PACK(merged_size, 1));
+            PUT(FTRP(bp), PACK(merged_size, 1));
+        }
         return bp;
     }
 
