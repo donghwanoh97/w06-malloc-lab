@@ -78,7 +78,8 @@ static char *free_listp;
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
 static void place(char *bp, size_t asize);
-static void *find_fit(size_t size);
+static void *find_best_fit(size_t size);
+static void *find_first_fit(size_t asize);
 
 int mm_init(void);
 void *mm_malloc(size_t size);
@@ -151,7 +152,7 @@ void *mm_malloc(size_t size) {
     if (size <= DSIZE) asize = MIN_BLOCK_SIZE;
     else asize = ALIGN(size + DSIZE);
 
-    if ((bp = find_fit(asize)) != NULL) {
+    if ((bp = find_first_fit(asize)) != NULL) {
         place(bp, asize);
         return bp;
     }
@@ -359,9 +360,9 @@ static void *coalesce(void *bp) {
 }
 
 /*
- * find_fit - free list 순회하며 asize와 크기가 가장 비슷한 가용 리스트 선택(best fit)
+ * find_best_fit - free list 순회하며 asize와 크기가 가장 비슷한 가용 리스트 선택(best fit)
  */
-static void *find_fit(size_t asize) {
+static void *find_best_fit(size_t asize) {
     void *bp;
 
     void *target_bp = NULL;
@@ -379,6 +380,21 @@ static void *find_fit(size_t asize) {
     }
 
     return target_bp;
+}
+
+/*
+ * find_first_fit - Traverse the heap from the start and find the first fitting block
+ */
+static void *find_first_fit(size_t asize) {
+    void *bp;
+
+    for (bp = free_listp; bp != NULL; bp = (char *)GET_PTR(SUCC(bp))) {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+            return bp;
+        }
+    }
+
+    return NULL;
 }
 
 /*
