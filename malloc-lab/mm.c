@@ -257,7 +257,6 @@ static void *extend_heap(size_t words)
     return coalesce(bp);
 }
 
-
 /*
  * coalesce- Merge adjacent blocks if available
  */
@@ -319,13 +318,21 @@ static void *coalesce(void *bp) {
 static void *find_first_fit(size_t asize) {
     void *bp;
 
+    void *target_bp = NULL;
+    size_t min_diff = (size_t) - 1;
+
     for (bp = free_listp; bp != NULL; bp = (char *)GET_PTR(SUCC(bp))) {
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
-            return bp;
+            size_t diff = GET_SIZE(HDRP(bp)) - asize;
+            
+            if (diff < min_diff) {
+                min_diff = diff;
+                target_bp = bp;
+            }
         }
     }
 
-    return NULL;
+    return target_bp;
 }
 
 /*
