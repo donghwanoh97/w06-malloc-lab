@@ -181,6 +181,7 @@ void mm_free(void *bp)
  */
 void *mm_realloc(void *bp, size_t size)
 {
+    
     if (bp == NULL) return mm_malloc(size);
 
     if (size == 0) 
@@ -202,16 +203,20 @@ void *mm_realloc(void *bp, size_t size)
         return bp;
     }
 
-    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
-    size_t next_size = GET_SIZE(HDRP(NEXT_BLKP(bp)));
+    // 경계 조건 확인을 위해 미리 선언 (에필로그 블록 침범 방지)
+    void *next_bp = NEXT_BLKP(bp);
+    size_t next_alloc = GET_ALLOC(HDRP(next_bp));
+    size_t next_size = GET_SIZE(HDRP(next_bp));
 
-    // 2. 기존 공간 불충분, 다음 블록이 free하고 공간이 충분하다면 병합
-    if (!next_alloc && old_size + next_size >= asize)
-    {
+    void *prev_bp = PREV_BLKP(bp);
+    size_t prev_alloc = GET_ALLOC(HDRP(prev_bp));
+    size_t prev_size = GET_SIZE(HDRP(prev_bp));
+
+    // 2. 기존 공간 불충분, 다음 블록이 free이고, 공간이 충분하다면 병합
+    if (!next_alloc && old_size + next_size >= asize) {
         size_t merged_size = old_size + next_size;
         size_t remaining_size = merged_size - asize;
 
-        void* next_bp = NEXT_BLKP(bp);
         remove_node(next_bp);
 
         // 초기화 1: merged size를 쪼갤 수 있는 지 확인
@@ -230,14 +235,45 @@ void *mm_realloc(void *bp, size_t size)
         return bp;
     }
 
-    // 3. 기존 공간, 다음 블록 공간 불충분시 malloc 호출
+    // 3. 기존 공간 불충분, 이전 블록이 free이고, 공간이 충분하다면 병합(다음 블록이 free면 함께 병합)
+    if (!prev_alloc && prev_size + old_size + (next_alloc ? 0 : next_size) >= asize) {
+    size_t merged_size = prev_size + old_size;
+
+    remove_node(prev_bp);
+    if (!next_alloc) {
+        remove_node(next_bp);
+        merged_size += next_size;
+    }
+    size_t remaining_size = merged_size - asize;
+
+    size_t copySize = old_size - DSIZE;
+    if (size < copySize) copySize = size;
+    memcpy(prev_bp, bp, copySize);
+
+    if (remaining_size >= MIN_BLOCK_SIZE) {
+        PUT(HDRP(prev_bp), PACK(asize, 1));
+        PUT(FTRP(prev_bp), PACK(asize, 1));
+
+        void *rest = NEXT_BLKP(prev_bp);
+        PUT(HDRP(rest), PACK(remaining_size, 0));
+        PUT(FTRP(rest), PACK(remaining_size, 0));
+        insert_node(rest);
+    } else {
+        PUT(HDRP(prev_bp), PACK(merged_size, 1));
+        PUT(FTRP(prev_bp), PACK(merged_size, 1));
+    }
+    return prev_bp;
+    }
+
+    // 5. 기존 공간, 이전, 다음 블록 공간 불충분시 malloc 호출
     void *newbp = mm_malloc(size);
     if (newbp == NULL)
     {
         return NULL;
     }
 
-    size_t copySize = old_size - DSIZE;
+    // 페이로드 사이즈 계산
+    size_t copySize = old_size - DSIZE; // 헤더, 푸터 사이즈 제거
     if (size < copySize) {
         copySize = size;
     }
