@@ -153,7 +153,7 @@ void *mm_malloc(size_t size) {
     if (size <= DSIZE) asize = MIN_BLOCK_SIZE;
     else asize = ALIGN(size + DSIZE);
 
-    if ((bp = find_worst_fit(asize)) != NULL) {
+    if ((bp = find_best_fit(asize)) != NULL) {
         place(bp, asize);
         return bp;
     }
@@ -265,6 +265,38 @@ void *mm_realloc(void *bp, size_t size)
         PUT(FTRP(prev_bp), PACK(merged_size, 1));
     }
     return prev_bp;
+    }
+
+    // 4. 힙 끝 확장: next가 에필로그이거나, next가 free이면서 그 다음이 에필로그
+    if ((next_size == 0) |(!next_alloc && GET_SIZE(HDRP(NEXT_BLKP(next_size)) == 0))) {
+        size_t merged_size = old_size;
+        char *start = bp;
+
+        if (!prev_alloc) {
+            merged_size += prev_size;
+            start = prev_bp; 
+        }
+
+        if (!next_alloc) {
+            merged_size += next_size;
+        }
+
+        size_t require_size = asize - merged_size;
+        if (mem_sbrk(require_size / WSIZE) != (void *)-1) {
+            if (!prev_alloc) remove_node(prev_bp);
+            if (!next_alloc) remove_node(next_bp);
+
+            if (start != bp) {
+                size_t cs = old_size - DSIZE;
+                if (size < cs) cs = size;
+                memcpy(start, bp, cs);
+            }
+
+            PUT(HDRP(prev_bp), PACK(asize, 1));
+            PUT(FTRP(prev_bp), PACK(asize, 1));
+            PUT(HDRP(prev_bp + WSIZE), PACK(0, 1));
+            return start;
+        }       
     }
 
     // 5. 기존 공간, 이전, 다음 블록 공간 불충분시 malloc 호출
